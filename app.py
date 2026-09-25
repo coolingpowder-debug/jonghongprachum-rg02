@@ -75,9 +75,7 @@ if check_password():
     st.markdown("### 📋 10 รายการจองล่าสุด")
     if total_bookings > 0:
       df_bookings = pd.DataFrame(st.session_state.bookings)
-      # เพิ่มลำดับที่ (No.) ให้สวยงามเหมือนในรูปตัวอย่าง
       df_bookings.insert(0, "ลำดับ", range(1, len(df_bookings) + 1))
-      # ดึง 10 รายการล่าสุด และเรียงจากใหม่ไปเก่า
       df_recent = df_bookings.tail(10).iloc[::-1]
       st.dataframe(df_recent, use_container_width=True, hide_index=True)
     else:
@@ -125,9 +123,37 @@ if check_password():
 
     booked_dates_in_month = set()
     for b in st.session_state.bookings:
-      b_date = datetime.datetime.strptime(b["วันที่"], "%Y-%m-%d").date()
-      if b_date.year == selected_year and b_date.month == selected_month:
-        booked_dates_in_month.add(b_date.day)
+      # ตรวจสอบว่าเป็นช่วงวันหรือวันเดียว
+      date_str = (
+          b.get("วันที่ประชุม")
+          or b.get("วันที่")
+          or b.get("ว.ด.ป. - ว.ด.ป.ที่")
+      )
+      if date_str:
+        try:
+          if " ถึง " in str(date_str):
+            # กรณีเป็นช่วงวัน (เช่น 2026-09-23 ถึง 2026-09-25)
+            start_str, end_str = date_str.split(" ถึง ")
+            d_start = datetime.datetime.strptime(
+                start_str.strip(), "%Y-%m-%d"
+            ).date()
+            d_end = datetime.datetime.strptime(
+                end_str.strip(), "%Y-%m-%d"
+            ).date()
+            cur = d_start
+            while cur <= d_end:
+              if cur.year == selected_year and cur.month == selected_month:
+                booked_dates_in_month.add(cur.day)
+              cur += datetime.timedelta(days=1)
+          else:
+            # กรณีวันเดียว
+            b_date = datetime.datetime.strptime(
+                str(date_str).strip(), "%Y-%m-%d"
+            ).date()
+            if b_date.year == selected_year and b_date.month == selected_month:
+              booked_dates_in_month.add(b_date.day)
+        except Exception:
+          pass
 
     cal = calendar.monthcalendar(selected_year, selected_month)
     cal_data = []
@@ -162,11 +188,31 @@ if check_password():
     with st.form("booking_form"):
       st.subheader("📝 แบบฟอร์มจองห้องประชุม")
 
-      booking_date = st.date_input(
-          "เลือกวันที่ต้องการจอง",
-          value=datetime.date.today(),
-          min_value=datetime.date.today(),
+      # เลือกรูปแบบการจอง
+      booking_type = st.radio(
+          "รูปแบบการจองวันที่", ["จองวันเดียว", "จองเป็นช่วงวัน (หลายวัน)"]
       )
+
+      if booking_type == "จองวันเดียว":
+        booking_date = st.date_input(
+            "เลือกวันที่ต้องการจอง",
+            value=datetime.date.today(),
+            min_value=datetime.date.today(),
+        )
+        date_display = booking_date.strftime("%Y-%m-%d")
+      else:
+        date_range = st.date_input(
+            "เลือกช่วงวันที่ต้องการจอง (วันเริ่มต้น - วันสิ้นสุด)",
+            value=(datetime.date.today(), datetime.date.today()),
+            min_value=datetime.date.today(),
+        )
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+          date_display = (
+              f"{date_range[0].strftime('%Y-%m-%d')} ถึง"
+              f" {date_range[1].strftime('%Y-%m-%d')}"
+          )
+        else:
+          date_display = datetime.date.today().strftime("%Y-%m-%d")
 
       time_slot = st.selectbox(
           "ช่วงเวลาที่ใช้ห้อง",
@@ -189,7 +235,7 @@ if check_password():
           ],
       )
 
-      submit_button = st.form_submit_button(label="ยืนยันการจอง")
+      submit_button = st.form_submit_button(label="เยืนยันการจอง")
 
       if submit_button:
         if meeting_topic and booker_name:
@@ -197,7 +243,7 @@ if check_password():
               "วันที่บันทึก": datetime.datetime.now().strftime(
                   "%Y-%m-%d %H:%M:%S"
               ),
-              "วันที่ประชุม": booking_date.strftime("%Y-%m-%d"),
+              "วันที่ประชุม": date_display,
               "ช่วงเวลา": time_slot,
               "เรื่องที่ประชุม": meeting_topic,
               "ผู้จอง": booker_name,
