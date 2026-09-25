@@ -21,7 +21,7 @@ def load_bookings():
 
 
 def save_all_bookings(bookings_list):
-  """บันทึกข้อมูลทั้งหมดลงไฟล์ CSV (ใช้สำหรับการลบข้อมูล)"""
+  """บันทึกข้อมูลทั้งหมดลงไฟล์ CSV"""
   df = pd.DataFrame(bookings_list)
   df.to_csv(DB_FILE, index=False)
 
@@ -74,25 +74,57 @@ if check_password():
   # โหลดข้อมูลการจองจากไฟล์
   bookings_list = load_bookings()
 
-  # ส่วนเมนูด้านบน (Radio แบบแนวนอน)
-  st.markdown("### เมนู")
-  selected_menu = st.radio(
-      "เลือกเมนู",
-      ["📊 แดชบอร์ดภาพรวม", "📝 หน้าจองห้องประชุม", "🗑️ จัดการ/ยกเลิกการจอง"],
-      horizontal=True,
-      label_visibility="collapsed",
-  )
+  # ----------------------------------------------------
+  # ส่วนแสดงผลนาฬิกาดิจิตอลเรียลไทม์มุมขวาบน และเมนูหลัก
+  # ----------------------------------------------------
+  col_head1, col_head2 = st.columns([3, 1])
+
+  with col_head1:
+    # ส่วนเมนูด้านบน (Radio แบบแนวนอน)
+    selected_menu = st.radio(
+        "เลือกเมนู",
+        ["📊 แดชบอร์ดภาพรวม", "📝 หน้าจองห้องประชุม", "🗑️ จัดการ/ยกเลิกการจอง"],
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+  with col_head2:
+    # แสดงนาฬิกาดิจิตอลเรียลไทม์ด้วย HTML/JS
+    st.markdown(
+        """
+        <div style="text-align: right; padding-top: 5px;">
+            <span style="font-size: 14px; font-weight: bold; color: #555;" id="realtime-clock">กำลังโหลดเวลา...</span>
+        </div>
+        <script>
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+            const timeString = `${dateStr} | ${hours}:${minutes}:${seconds} น.`;
+            const clockElement = document.getElementById('realtime-clock');
+            if (clockElement) {
+                clockElement.innerText = timeString;
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
 
   st.markdown("---")
 
   # ----------------------------------------------------
-  # 1. หน้าแดชบอร์ดภาพรวม (รวมสถานะปัจจุบัน + ค้นหา + โหลด Excel)
+  # 1. หน้าแดชบอร์ดภาพรวม
   # ----------------------------------------------------
   if selected_menu == "📊 แดชบอร์ดภาพรวม":
     st.markdown("### 📊 แดชบอร์ดข้อมูลการจองห้องประชุม")
     st.write("แสดงรายการจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) 10 รายการล่าสุด")
 
-    # 🟢 สถานะห้องประชุมแบบเรียลไทม์ (วันนี้)
+    # สถานะห้องประชุมแบบเรียลไทม์ (วันนี้)
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     is_room_busy = False
     busy_detail = ""
@@ -143,7 +175,6 @@ if check_password():
         label="จำนวนการจองทั้งหมด (ครั้ง)", value=f"{total_bookings} รายการ"
     )
 
-    # ฟังก์ชันค้นหาข้อมูล
     st.markdown("---")
     search_query = st.text_input(
         "🔍 ค้นหาข้อมูล (พิมพ์ชื่อผู้จอง, เรื่อง, หรือ ฝ่าย)"
@@ -168,7 +199,6 @@ if check_password():
     else:
       st.info("ไม่พบรายการจองที่ค้นหาในระบบ")
 
-    # 📥 ปุ่มดาวน์โหลดรายงาน Excel
     if total_bookings > 0:
       df_all = pd.DataFrame(bookings_list)
       from io import BytesIO
@@ -188,10 +218,10 @@ if check_password():
       )
 
   # ----------------------------------------------------
-  # 2. หน้าจองห้องประชุม (ปฏิทิน + ฟอร์ม)
+  # 2. หน้าจองห้องประชุม
   # ----------------------------------------------------
   elif selected_menu == "📝 หน้าจองห้องประชุม":
-    st.title("🏢 ระบบจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) V.ทดลอง")
+    st.markdown("### 🏢 ระบบจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) V.ทดลอง")
     st.write(
         "ตรวจสอบตารางวันว่างจากปฏิทินด้านล่าง และกรอกรายละเอียดการจองห้องประชุม"
     )
@@ -359,11 +389,10 @@ if check_password():
   # 3. หน้าจัดการ/ยกเลิกการจอง
   # ----------------------------------------------------
   elif selected_menu == "🗑️ จัดการ/ยกเลิกการจอง":
-    st.title("🗑️ จัดการหรือยกเลิกรายการจองห้องประชุม")
+    st.markdown("### 🗑️ จัดการหรือยกเลิกรายการจองห้องประชุม")
     st.write("เลือกรายการที่ต้องการลบเพื่อปลดล็อกวันในปฏิทิน")
 
     if len(bookings_list) > 0:
-      # สร้างตัวเลือกสำหรับลบ
       booking_options = []
       for idx, b in enumerate(bookings_list):
         date_val = (
@@ -386,7 +415,6 @@ if check_password():
       )
 
       if st.button("❌ ยืนยันการยกเลิกรายการนี้", type="primary"):
-        # ตัดรายการที่เลือกทิ้ง
         del bookings_list[selected_to_delete]
         save_all_bookings(bookings_list)
         st.success("🗑️ ยกเลิกรายการจองเรียบร้อยแล้ว!")
@@ -399,4 +427,3 @@ if check_password():
       st.dataframe(df_all, use_container_width=True, hide_index=True)
     else:
       st.info("ไม่มีรายการจองในระบบขณะนี้")
-      
