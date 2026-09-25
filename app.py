@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import pandas as pd
 import streamlit as st
@@ -57,7 +58,6 @@ if check_password():
   st.markdown("---")
   st.subheader("📅 ปฏิทินสถานะการจองห้องประชุม")
 
-  # เลือกเดือนและปีสำหรับดูปฏิทิน
   col_m1, col_m2 = st.columns(2)
   with col_m1:
     selected_year = st.selectbox(
@@ -93,9 +93,6 @@ if check_password():
     if b_date.year == selected_year and b_date.month == selected_month:
       booked_dates_in_month.add(b_date.day)
 
-  # สร้างตารางปฏิทินอย่างง่ายแสดงในเดือนนั้นๆ
-  import calendar
-
   cal = calendar.monthcalendar(selected_year, selected_month)
   cal_data = []
   week_days = ["จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์", "อาทิตย์"]
@@ -103,9 +100,7 @@ if check_password():
   for week in cal:
     week_row = {}
     for i, day in enumerate(week):
-      day_str = (
-          str(day) if day != 0 else ""
-      )  # ถ้าเป็น 0 คือวันนอกเหนือจากเดือนนั้น
+      day_str = str(day) if day != 0 else ""
       if day != 0:
         if day in booked_dates_in_month:
           day_str = f"🔴 {day} (ถูกจองแล้ว)"
@@ -118,38 +113,50 @@ if check_password():
   st.caption("คำอธิบาย: 🔴 = มีการจองแล้วในวันนี้ | 🟢 = วันที่ยังว่างอยู่")
 
   # ----------------------------------------------------
+  # แสดงรายการที่ถูกจองแล้วใต้ปฏิทินทันที (ให้ทุกคนเห็นชัดเจน)
+  # ----------------------------------------------------
+  st.markdown("### 📋 รายการห้องประชุมที่ถูกจองแล้วทั้งหมด")
+  if len(st.session_state.bookings) > 0:
+    df_bookings = pd.DataFrame(st.session_state.bookings)
+    st.dataframe(df_bookings, use_container_width=True)
+  else:
+    st.info("ยังไม่มีรายการจองห้องประชุมในขณะนี้")
+
+  # ----------------------------------------------------
   # ฟอร์มกรอกข้อมูลการจอง
   # ----------------------------------------------------
   st.markdown("---")
   with st.form("booking_form"):
     st.subheader("📝 แบบฟอร์มจองห้องประชุม")
 
-    # เลือก วัน เดือน ปี
     booking_date = st.date_input(
         "เลือกวันที่ต้องการจอง",
         value=datetime.date.today(),
         min_value=datetime.date.today(),
     )
 
-    # เลือกช่วงเวลา
     time_slot = st.selectbox(
         "ช่วงเวลาที่ใช้ห้อง",
         ["ครึ่งวันเช้า", "ครึ่งวันบ่าย", "เต็มวัน"],
     )
 
-    # เรื่องที่ประชุม
     meeting_topic = st.text_input("เรื่องที่ประชุม / วาระการประชุม")
-
-    # ผู้จอง
     booker_name = st.text_input("ชื่อผู้จอง")
 
-    # ส่วน-ฝ่าย (ตามที่ระบุ)
+    # เพิ่ม "ส่งเสริม" ในตัวเลือกส่วน/ฝ่าย
     department = st.selectbox(
         "ส่วน / ฝ่าย",
-        ["บริหาร", "ยุทธศาสตร์", "สุขภาพ", "มาตรฐาน", "สินค้า", "อื่นๆ"],
+        [
+            "บริหาร",
+            "ยุทธศาสตร์",
+            "สุขภาพ",
+            "มาตรฐาน",
+            "สินค้า",
+            "ส่งเสริม",
+            "อื่นๆ",
+        ],
     )
 
-    # ปุ่มกดบันทึก
     submit_button = st.form_submit_button(label="ยืนยันการจอง")
 
     if submit_button:
@@ -166,15 +173,3 @@ if check_password():
         st.rerun()
       else:
         st.warning("⚠️ กรุณากรอก 'เรื่องที่ประชุม' และ 'ชื่อผู้จอง' ให้ครบถ้วน")
-
-  # ----------------------------------------------------
-  # แสดงรายการจองทั้งหมด
-  # ----------------------------------------------------
-  st.markdown("---")
-  st.subheader("📋 รายการจองห้องประชุมทั้งหมด")
-
-  if len(st.session_state.bookings) > 0:
-    df_bookings = pd.DataFrame(st.session_state.bookings)
-    st.dataframe(df_bookings, use_container_width=True)
-  else:
-    st.info("ยังไม่มีรายการจองห้องประชุมในขณะนี้")
