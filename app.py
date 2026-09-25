@@ -1,10 +1,30 @@
 import calendar
 import datetime
+import os
 import pandas as pd
 import streamlit as st
 
 # กำหนดรหัสผ่านสำหรับเข้าใช้งานระบบ
 PASSWORD = "1234"  # สามารถเปลี่ยนรหัสผ่านได้ที่นี่
+DB_FILE = "bookings.csv"  # ไฟล์สำหรับบันทึกข้อมูลถาวร
+
+
+def load_bookings():
+  """โหลดข้อมูลการจองจากไฟล์ CSV"""
+  if os.path.exists(DB_FILE):
+    try:
+      return pd.read_csv(DB_FILE).to_dict(orient="records")
+    except Exception:
+      return []
+  return []
+
+
+def save_booking_to_csv(new_booking):
+  """บันทึกข้อมูลการจองลงไฟล์ CSV"""
+  current_data = load_bookings()
+  current_data.append(new_booking)
+  df = pd.DataFrame(current_data)
+  df.to_csv(DB_FILE, index=False)
 
 
 def check_password():
@@ -45,9 +65,8 @@ def check_password():
 # ตรวจสอบสิทธิ์การเข้าใช้งาน
 if check_password():
 
-  # จำลองฐานข้อมูลเก็บข้อมูลการจองไว้ใน st.session_state
-  if "bookings" not in st.session_state:
-    st.session_state.bookings = []
+  # โหลดข้อมูลการจองจากไฟล์
+  bookings_list = load_bookings()
 
   # ส่วนเมนูด้านบน (Radio แบบแนวนอน)
   st.markdown("### เมนู")
@@ -67,14 +86,14 @@ if check_password():
     st.title("📊 แดชบอร์ดข้อมูลการจองห้องประชุมล่าสุด")
     st.write("แสดงรายการจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) 10 รายการล่าสุด")
 
-    total_bookings = len(st.session_state.bookings)
+    total_bookings = len(bookings_list)
     st.metric(
         label="จำนวนการจองทั้งหมด (ครั้ง)", value=f"{total_bookings} รายการ"
     )
 
     st.markdown("### 📋 10 รายการจองล่าสุด")
     if total_bookings > 0:
-      df_bookings = pd.DataFrame(st.session_state.bookings)
+      df_bookings = pd.DataFrame(bookings_list)
       df_bookings.insert(0, "ลำดับ", range(1, len(df_bookings) + 1))
       df_recent = df_bookings.tail(10).iloc[::-1]
       st.dataframe(df_recent, use_container_width=True, hide_index=True)
@@ -122,8 +141,7 @@ if check_password():
       )
 
     booked_dates_in_month = set()
-    for b in st.session_state.bookings:
-      # ตรวจสอบว่าเป็นช่วงวันหรือวันเดียว
+    for b in bookings_list:
       date_str = (
           b.get("วันที่ประชุม")
           or b.get("วันที่")
@@ -132,7 +150,6 @@ if check_password():
       if date_str:
         try:
           if " ถึง " in str(date_str):
-            # กรณีเป็นช่วงวัน (เช่น 2026-09-23 ถึง 2026-09-25)
             start_str, end_str = date_str.split(" ถึง ")
             d_start = datetime.datetime.strptime(
                 start_str.strip(), "%Y-%m-%d"
@@ -146,7 +163,6 @@ if check_password():
                 booked_dates_in_month.add(cur.day)
               cur += datetime.timedelta(days=1)
           else:
-            # กรณีวันเดียว
             b_date = datetime.datetime.strptime(
                 str(date_str).strip(), "%Y-%m-%d"
             ).date()
@@ -185,10 +201,9 @@ if check_password():
     st.markdown("---")
 
     # ฟอร์มกรอกข้อมูลการจอง
-    with st.form("booking_form"):
+    with st.form("booking_form", clear_on_submit=True):
       st.subheader("📝 แบบฟอร์มจองห้องประชุม")
 
-      # เลือกรูปแบบการจอง
       booking_type = st.radio(
           "รูปแบบการจองวันที่", ["จองวันเดียว", "จองเป็นช่วงวัน (หลายวัน)"]
       )
@@ -235,7 +250,7 @@ if check_password():
           ],
       )
 
-      submit_button = st.form_submit_button(label="เยืนยันการจอง")
+      submit_button = st.form_submit_button(label="ยืนยันการจอง")
 
       if submit_button:
         if meeting_topic and booker_name:
@@ -249,7 +264,7 @@ if check_password():
               "ผู้จอง": booker_name,
               "ส่วน/ฝ่าย": department,
           }
-          st.session_state.bookings.append(new_booking)
+          save_booking_to_csv(new_booking)
           st.success("🎉 จองห้องประชุมสำเร็จเรียบร้อยแล้ว!")
           st.rerun()
         else:
