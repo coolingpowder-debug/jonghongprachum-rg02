@@ -13,18 +13,24 @@ def load_bookings():
   """โหลดข้อมูลการจองจากไฟล์ CSV"""
   if os.path.exists(DB_FILE):
     try:
-      return pd.read_csv(DB_FILE).to_dict(orient="records")
+      df = pd.read_csv(DB_FILE)
+      return df.to_dict(orient="records")
     except Exception:
       return []
   return []
 
 
+def save_all_bookings(bookings_list):
+  """บันทึกข้อมูลทั้งหมดลงไฟล์ CSV (ใช้สำหรับการลบข้อมูล)"""
+  df = pd.DataFrame(bookings_list)
+  df.to_csv(DB_FILE, index=False)
+
+
 def save_booking_to_csv(new_booking):
-  """บันทึกข้อมูลการจองลงไฟล์ CSV"""
+  """บันทึกข้อมูลการจองใหม่ลงไฟล์ CSV"""
   current_data = load_bookings()
   current_data.append(new_booking)
-  df = pd.DataFrame(current_data)
-  df.to_csv(DB_FILE, index=False)
+  save_all_bookings(current_data)
 
 
 def check_password():
@@ -72,7 +78,7 @@ if check_password():
   st.markdown("### เมนู")
   selected_menu = st.radio(
       "เลือกเมนู",
-      ["📊 แดชบอร์ดภาพรวม", "📝 หน้าจองห้องประชุม"],
+      ["📊 แดชบอร์ดภาพรวม", "📝 หน้าจองห้องประชุม", "🗑️ จัดการ/ยกเลิกการจอง"],
       horizontal=True,
       label_visibility="collapsed",
   )
@@ -80,28 +86,109 @@ if check_password():
   st.markdown("---")
 
   # ----------------------------------------------------
-  # 1. หน้าแดชบอร์ดภาพรวม
+  # 1. หน้าแดชบอร์ดภาพรวม (รวมสถานะปัจจุบัน + ค้นหา + โหลด Excel)
   # ----------------------------------------------------
   if selected_menu == "📊 แดชบอร์ดภาพรวม":
-    st.title("📊 แดชบอร์ดข้อมูลการจองห้องประชุมล่าสุด")
+    st.markdown("### 📊 แดชบอร์ดข้อมูลการจองห้องประชุม")
     st.write("แสดงรายการจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) 10 รายการล่าสุด")
+
+    # 🟢 สถานะห้องประชุมแบบเรียลไทม์ (วันนี้)
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    is_room_busy = False
+    busy_detail = ""
+    for b in bookings_list:
+      date_str = (
+          b.get("วันที่ประชุม")
+          or b.get("วันที่")
+          or b.get("ว.ด.ป. - ว.ด.ป.ที่")
+      )
+      if date_str:
+        try:
+          if " ถึง " in str(date_str):
+            start_str, end_str = date_str.split(" ถึง ")
+            d_start = datetime.datetime.strptime(
+                start_str.strip(), "%Y-%m-%d"
+            ).date()
+            d_end = datetime.datetime.strptime(
+                end_str.strip(), "%Y-%m-%d"
+            ).date()
+            cur = d_start
+            while cur <= d_end:
+              if cur.strftime("%Y-%m-%d") == today_str:
+                is_room_busy = True
+                busy_detail = (
+                    f"มีจองช่วง: {b.get('ช่วงเวลา')} (เรื่อง:"
+                    f" {b.get('เรื่องที่ประชุม')})"
+                )
+              cur += datetime.timedelta(days=1)
+          else:
+            if str(date_str).strip() == today_str:
+              is_room_busy = True
+              busy_detail = (
+                  f"มีจองช่วง: {b.get('ช่วงเวลา')} (เรื่อง:"
+                  f" {b.get('เรื่องที่ประชุม')})"
+              )
+        except Exception:
+          pass
+
+    if is_room_busy:
+      st.error(
+          f"🔴 **สถานะห้องประชุมวันนี้ ({today_str}):** ไม่ว่าง ({busy_detail})"
+      )
+    else:
+      st.success(f"🟢 **สถานะห้องประชุมวันนี้ ({today_str}):** ห้องว่างพร้อมใช้งาน")
 
     total_bookings = len(bookings_list)
     st.metric(
         label="จำนวนการจองทั้งหมด (ครั้ง)", value=f"{total_bookings} รายการ"
     )
 
+    # ฟังก์ชันค้นหาข้อมูล
+    st.markdown("---")
+    search_query = st.text_input(
+        "🔍 ค้นหาข้อมูล (พิมพ์ชื่อผู้จอง, เรื่อง, หรือ ฝ่าย)"
+    )
+
+    filtered_list = bookings_list
+    if search_query:
+      filtered_list = [
+          b
+          for b in bookings_list
+          if any(
+              search_query.lower() in str(val).lower() for val in b.values()
+          )
+      ]
+
     st.markdown("### 📋 10 รายการจองล่าสุด")
-    if total_bookings > 0:
-      df_bookings = pd.DataFrame(bookings_list)
+    if len(filtered_list) > 0:
+      df_bookings = pd.DataFrame(filtered_list)
       df_bookings.insert(0, "ลำดับ", range(1, len(df_bookings) + 1))
       df_recent = df_bookings.tail(10).iloc[::-1]
       st.dataframe(df_recent, use_container_width=True, hide_index=True)
     else:
-      st.info("ยังไม่มีรายการจองห้องประชุมในขณะนี้")
+      st.info("ไม่พบรายการจองที่ค้นหาในระบบ")
+
+    # 📥 ปุ่มดาวน์โหลดรายงาน Excel
+    if total_bookings > 0:
+      df_all = pd.DataFrame(bookings_list)
+      from io import BytesIO
+
+      output = BytesIO()
+      with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_all.to_excel(writer, index=False, sheet_name="Booking_Report")
+      excel_data = output.getvalue()
+
+      st.download_button(
+          label="📥 ดาวน์โหลดรายงานการจองทั้งหมด (.xlsx)",
+          data=excel_data,
+          file_name=f"Meeting_Room_Bookings_{datetime.date.today()}.xlsx",
+          mime=(
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ),
+      )
 
   # ----------------------------------------------------
-  # 2. หน้าจองห้องประชุม (รวมปฏิทินและฟอร์ม)
+  # 2. หน้าจองห้องประชุม (ปฏิทิน + ฟอร์ม)
   # ----------------------------------------------------
   elif selected_menu == "📝 หน้าจองห้องประชุม":
     st.title("🏢 ระบบจองห้องประชุม สนง.ปศข.2 (ห้องเล็ก) V.ทดลอง")
@@ -109,7 +196,6 @@ if check_password():
         "ตรวจสอบตารางวันว่างจากปฏิทินด้านล่าง และกรอกรายละเอียดการจองห้องประชุม"
     )
 
-    # ส่วนแสดงปฏิทินรายเดือน
     st.subheader("📅 ปฏิทินสถานะการจองห้องประชุม")
 
     col_m1, col_m2 = st.columns(2)
@@ -200,7 +286,6 @@ if check_password():
 
     st.markdown("---")
 
-    # ฟอร์มกรอกข้อมูลการจอง
     with st.form("booking_form", clear_on_submit=True):
       st.subheader("📝 แบบฟอร์มจองห้องประชุม")
 
@@ -269,3 +354,49 @@ if check_password():
           st.rerun()
         else:
           st.warning("⚠️ กรุณากรอก 'เรื่องที่ประชุม' และ 'ชื่อผู้จอง' ให้ครบถ้วน")
+
+  # ----------------------------------------------------
+  # 3. หน้าจัดการ/ยกเลิกการจอง
+  # ----------------------------------------------------
+  elif selected_menu == "🗑️ จัดการ/ยกเลิกการจอง":
+    st.title("🗑️ จัดการหรือยกเลิกรายการจองห้องประชุม")
+    st.write("เลือกรายการที่ต้องการลบเพื่อปลดล็อกวันในปฏิทิน")
+
+    if len(bookings_list) > 0:
+      # สร้างตัวเลือกสำหรับลบ
+      booking_options = []
+      for idx, b in enumerate(bookings_list):
+        date_val = (
+            b.get("วันที่ประชุม")
+            or b.get("วันที่")
+            or b.get("ว.ด.ป. - ว.ด.ป.ที่")
+        )
+        label = (
+            f"#{idx+1} | วันที่: {date_val} | เรื่อง: {b.get('เรื่องที่ประชุม')}"
+            f" | ผู้จอง: {b.get('ผู้จอง')}"
+        )
+        booking_options.append((idx, label))
+
+      selected_to_delete = st.selectbox(
+          "เลือกรายการที่ต้องการยกเลิก",
+          options=[item[0] for item in booking_options],
+          format_func=lambda x: [
+              item[1] for item in booking_options if item[0] == x
+          ][0],
+      )
+
+      if st.button("❌ ยืนยันการยกเลิกรายการนี้", type="primary"):
+        # ตัดรายการที่เลือกทิ้ง
+        del bookings_list[selected_to_delete]
+        save_all_bookings(bookings_list)
+        st.success("🗑️ ยกเลิกรายการจองเรียบร้อยแล้ว!")
+        st.rerun()
+
+      st.markdown("---")
+      st.markdown("### 📋 รายการจองทั้งหมดในระบบ")
+      df_all = pd.DataFrame(bookings_list)
+      df_all.insert(0, "ลำดับ", range(1, len(df_all) + 1))
+      st.dataframe(df_all, use_container_width=True, hide_index=True)
+    else:
+      st.info("ไม่มีรายการจองในระบบขณะนี้")
+      
